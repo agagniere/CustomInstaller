@@ -5,14 +5,23 @@
  # - gpgv
  # - wget or curl
  # - sha256sum or shasum
+ # - openssl
  #
  # Customizable parameters can be set via environment variables or the command line
  # Other variables can be overridden via the the command line
+ #
+ # For help about how to use this makefile:
+ # make help
+ #
+ # For a human-readable description of what the current configuration is:
+ # make summary
 ##
 
 # ---------- Customizable parameters ----------
 # wget | curl
-Downloader          ?= wget
+ifeq "$(origin Downloader)" "undefined"
+	Downloader      := $(shell command -v wget > /dev/null && echo wget || echo curl)
+endif
 
 FedoraVersion       ?= 40-1.14
 
@@ -25,89 +34,145 @@ Architecture        ?= x86_64
 
 # ---------- Computed / Preset ----------
 GPG_VERIFY          := gpgv
+OPENSSL             := openssl
+
+GeneratedFolder     := generated
+CertificateFolder   := $(GeneratedFolder)/certificates
+RPMFolder           := $(GeneratedFolder)/RPMs
 
 ifeq "$(shell uname)" "Darwin"
 	ECHO            := echo
 	DownloadsFolder := $(shell osascript -e 'POSIX path of (path to downloads folder)')
-	SHA_SUM         := shasum --algorithm 256 --ignore-missing
+	SHA_SUM         := shasum --algorithm 256
 else
 	SHELL           := bash
 	ECHO            := echo -e
 	DownloadsFolder != xdg-user-dir DOWNLOADS
-	SHA_SUM         := sha256sum --ignore-missing
+	SHA_SUM         := sha256sum
 endif
 
 ifeq "$(Downloader)" 'wget'
 	DOWNLOAD        := wget --directory $(DownloadsFolder) --no-clobber --quiet --show-progress
-else
+else ifeq "$(Downloader)" 'curl'
 	DOWNLOAD        := curl --output-dir $(DownloadsFolder) --remote-name --location
+else
+	DOWNLOAD        := $(Downloader)
 endif
 
 FedoraMajor         := $(shell cut --delimiter '-' --field 1 <<< "$(FedoraVersion)")
-
 FedoraKeyName       := fedora.gpg
 FedoraKeyURL        := https://fedoraproject.org
 FedoraKey           := $(DownloadsFolder)/$(FedoraKeyName)
-
 OfficialIsoURL      := https://download.fedoraproject.org/pub/fedora/linux/releases/$(FedoraMajor)/$(FedoraFlavor)/$(Architecture)/iso
 OfficialIsoName     := Fedora-$(FedoraFlavor)-Live-$(Architecture)-$(FedoraVersion).iso
 OfficialIso         := $(DownloadsFolder)/$(OfficialIsoName)
 OfficialCheckName   := Fedora-$(FedoraFlavor)-$(FedoraVersion)-$(Architecture)-CHECKSUM
 OfficialChecksum    := $(DownloadsFolder)/$(OfficialCheckName)
+MachineOwnerKey     := $(CertificateFolder)/MOK.priv
+MachineOwnerDER     := $(CertificateFolder)/MOK.der
+MachineOwnerPEM     := $(CertificateFolder)/MOK.pem
 # ---------------------------------------
 
+check_command        = command -v $(value $(1)) > /dev/null || \
+	{ $(ECHO) "$(PP_error)Missing dependency $(Bold)$(firstword $(value $(1)))$(EOC), consider installing it or overriding the $(Bold)$(Italic)$(1)$(EOC) variable" && false ; }
+
 # ---------- Colors ----------
-Cyan       := \033[36m
-Bold       := \033[1m
-Italic     := \033[3m
-EOC        := \033[0m
-PP_command := $(Cyan)
-PP_section := $(Bold)
-PP_input   := $(Bold)
+Red         := \033[31m
+Cyan        := \033[36m
+Bold        := \033[1m
+Italic      := \033[3m
+EOC         := \033[0m
+PP_command  := $(Cyan)
+PP_section  := $(Bold)
+PP_input    := $(Bold)
+PP_error    := $(Red)
+PP_variable := $(Italic)
 # ----------------------------
 
 # Phony rules
 
 ##@ General
 
-default: ## When no target is specified, display the summary
+default: help summary ## When no target is specified, display the help and summary
 
-summary: ## Sum up what the makefile intends on doing
+summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "\nReady to generate a bootable ISO for Fedora $(PP_input)$(FedoraMajor)$(EOC) ($(FedoraVersion))\n"
-	@$(ECHO) "When ready:\n  make $(PP_command)$(Italic)<step>$(EOC)\n"
-	@$(ECHO) "$(PP_section)$(PP_command)download$(EOC) will download:"
+	@$(ECHO) "When ready:\n  make $(PP_command)$(PP_variable)<step>$(EOC)\n"
+	@$(ECHO) "$(PP_section)$(PP_command)download$(EOC)\n  will download:"
 	@$(ECHO) "  - "$(FedoraKeyName)
 	@$(ECHO) "  - "$(OfficialCheckName)
 	@$(ECHO) "  - "$(OfficialIsoName)
 	@$(ECHO) "  to     $(PP_input)$(DownloadsFolder)$(EOC)"
-	@$(ECHO) "  using  $(PP_input)$(Downloader)$(EOC)"
+	@$(ECHO) "  using  $(PP_input)$(Downloader)$(EOC)\n"
+	@$(ECHO) "$(PP_section)$(PP_command)certificates$(EOC)"
+	@$(ECHO) "  to generate certificates for Machine Owner Key verification"
+	@$(ECHO) "  using $(OPENSSL)\n"
+	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help
-	@awk 'BEGIN {FS = ":.*##"; printf "\nThis Makefile allows one to generate a custom ISO to install Fedora\n\nUsage:\n  make $(PP_command)<target>$(EOC)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(PP_command)%-15s$(EOC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(PP_section)%s$(EOC):\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nThis Makefile allows one to generate a custom ISO to install Fedora\n\nUsage:\n  make $(PP_command)$(PP_variable)<target>$(EOC)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(PP_command)%-20s$(EOC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(PP_section)%s$(EOC):\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 raw_help: ## Display the help without color
-	@$(MAKE) help --no-print-directory PP_command= PP_section= EOC=
+	@$(MAKE) help --no-print-directory PP_command= PP_section= PP_variable= EOC=
 
 .PHONY: default summary help
 
+##@ Check for requirements
+
+check_downloader: ## Check that the choosen downloader is installed
+	@$(call check_command,Downloader)
+	@$(call check_command,DOWNLOAD)
+
+check_gpg_verifier: ## Check that the GPG verifier is installed
+	@$(call check_command,GPG_VERIFY)
+
+check_shasum: ## Check that the sum checker is installed
+	@$(call check_command,SHA256SUM)
+
+check_openssl: ## Check that openssl is installed
+	@$(call check_command,OPENSSL)
+
+check_all: check_downloader check_gpg_verifier check_shasum check_openssl ## Check that all requirements are installed
+
+.PHONY: check_downloader check_gpg_verifier check_shasum check_openssl
+
 ##@ Individual steps
 
-download: $(OfficialIso) ## Only download the official ISO (and check its integrity)
+download: $(OfficialIso) ## Download the official ISO (and check its integrity)
+
+certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Generate a private public key pair used to sign the bootloader
 
 .PHONY: download
 
+##@ Removing generated files
+
+clean_downloads: ## Remove downloaded files
+	$(RM) $(OfficialIso) $(OfficialChecksum) $(FedoraKey)
+
+clean_certificates: ## Remove certificates
+
+clean_all: clean_downloads ## Remove all generated and downloaded files
+
+.PHONY: clean_downloads clean_all
+
 # Concrete rules
 
-$(FedoraKey):
+$(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder) $(RPMFolder):
+	mkdir -p $@
+
+# --------------- Second Expansion ---------------
+# When a rule is expanded, both the target and the prerequisites
+# are immediately evaluated. Enabling a second expansion allows
+# a prerequisite to use automatic variables like $@, $*, etc
+.SECONDEXPANSION:
+
+$(FedoraKey): check_downloader | $$(@D)
 	$(DOWNLOAD) $(FedoraKeyURL)/$(@F)
 
-$(OfficialChecksum): $(FedoraKey)
+$(OfficialChecksum): $(FedoraKey) check_downloader check_gpg_verifier | $$(@D)
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
 	$(GPG_VERIFY) --keyring $< $@ || { rm $@ && false ; }
 
-$(OfficialIso): $(OfficialChecksum)
+$(OfficialIso): $(OfficialChecksum) check_downloader check_shasum | $$(@D)
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
-	( cd $(@D) && $(SHA_SUM) --check $(<F) ) || { rm $@ && false ; }
-
-full_clean:
-	$(RM) $(OfficialIso) $(OfficialChecksum) $(FedoraKey)
+	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) ) || { rm $@ && false ; }
