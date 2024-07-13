@@ -150,6 +150,7 @@ clean_downloads: ## Remove downloaded files
 	$(RM) $(OfficialIso) $(OfficialChecksum) $(FedoraKey)
 
 clean_certificates: ## Remove certificates
+	$(RM) -r $(CertificateFolder)
 
 clean_all: clean_downloads ## Remove all generated and downloaded files
 
@@ -169,10 +170,23 @@ $(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder) $(RPMFolder):
 $(FedoraKey): check_downloader | $$(@D)
 	$(DOWNLOAD) $(FedoraKeyURL)/$(@F)
 
-$(OfficialChecksum): $(FedoraKey) check_downloader check_gpg_verifier | $$(@D)
+$(OfficialChecksum): $(FedoraKey) check_gpg_verifier
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
 	$(GPG_VERIFY) --keyring $< $@ || { rm $@ && false ; }
 
-$(OfficialIso): $(OfficialChecksum) check_downloader check_shasum | $$(@D)
+$(OfficialIso): $(OfficialChecksum) check_shasum
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
 	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) ) || { rm $@ && false ; }
+
+$(MachineOwnerKey) $(MachineOwnerDER) &: check_openssl | $$(@D)
+	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -days 3650 \
+		-subj '/C=FR/L=Paris/CN=Antoine GAGNIERE/emailAddress=antoine@gagniere.dev' \
+		-addext 'subjectKeyIdentifier=hash' \
+		-addext 'authorityKeyIdentifier=keyid:always,issuer' \
+		-addext "basicConstraints=critical,CA:FALSE" \
+		-addext "extendedKeyUsage=codeSigning" \
+		-addext "nsComment=OpenSSL Generated Certificate" \
+		-outform DER -keyout $(MachineOwnerKey) -out $(MachineOwnerDER)
+
+$(MachineOwnerPEM): $(MachineOwnerDER)
+	$(OPENSSL) x509 -in $< -inform DER -outform PEM -out $@
