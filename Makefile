@@ -33,13 +33,15 @@ Architecture        ?= x86_64
 # ---------------------------------------------
 
 # ---------- Computed / Preset ----------
+# Commands
 GPG_VERIFY          := gpgv
 OPENSSL             := openssl
 
+# Folders
 GeneratedFolder     := generated
 CertificateFolder   := $(GeneratedFolder)/certificates
-RPMFolder           := $(GeneratedFolder)/RPMs
 
+# OS specific
 ifeq "$(shell uname)" "Darwin"
 	ECHO            := echo
 	DownloadsFolder := $(shell osascript -e 'POSIX path of (path to downloads folder)')
@@ -47,10 +49,11 @@ ifeq "$(shell uname)" "Darwin"
 else
 	SHELL           := bash
 	ECHO            := echo -e
-	DownloadsFolder != xdg-user-dir DOWNLOADS
+	DownloadsFolder != xdg-user-dir DOWNLOAD
 	SHA_SUM         := sha256sum
 endif
 
+# Download command
 ifeq "$(Downloader)" 'wget'
 	DOWNLOAD        := wget --directory $(DownloadsFolder) --no-clobber --quiet --show-progress
 else ifeq "$(Downloader)" 'curl'
@@ -73,21 +76,28 @@ MachineOwnerDER     := $(CertificateFolder)/MOK.der
 MachineOwnerPEM     := $(CertificateFolder)/MOK.pem
 # ---------------------------------------
 
-check_command        = command -v $(value $(1)) > /dev/null || \
-	{ $(ECHO) "$(PP_error)Missing dependency $(Bold)$(firstword $(value $(1)))$(EOC), consider installing it or overriding the $(Bold)$(Italic)$(1)$(EOC) variable" && false ; }
+# ---------- Make Configuration ----------
+.DELETE_ON_ERROR: # Delete the target of a rule if its recipe execution fails
+.SUFFIXES:        # Disable atomatic suffix guessing
+.ONESHELL:        # Perform a single shell invocation per recipe
+# ----------------------------------------
 
 # ---------- Colors ----------
-Red         := \033[31m
-Cyan        := \033[36m
-Bold        := \033[1m
-Italic      := \033[3m
-EOC         := \033[0m
-PP_command  := $(Cyan)
-PP_section  := $(Bold)
-PP_input    := $(Bold)
-PP_error    := $(Red)
-PP_variable := $(Italic)
+Red                 := \033[31m
+Cyan                := \033[36m
+Bold                := \033[1m
+Italic              := \033[3m
+EOC                 := \033[0m
+PP_command          := $(Cyan)
+PP_section          := $(Bold)
+PP_input            := $(Bold)
+PP_error            := $(Red)
+PP_variable         := $(Italic)
 # ----------------------------
+
+check_command        = command -v $(value $(1)) > /dev/null || \
+	$(ECHO) "$(PP_error)Missing dependency $(Bold)$(firstword $(value $(1)))$(EOC)," \
+	"consider installing it or overriding the $(Bold)$(Italic)$(1)$(EOC) variable"
 
 # Phony rules
 
@@ -105,12 +115,13 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  to     $(PP_input)$(DownloadsFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(Downloader)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)certificates$(EOC)"
-	@$(ECHO) "  to generate certificates for Machine Owner Key verification"
-	@$(ECHO) "  using $(OPENSSL)\n"
+	@$(ECHO) "  will generate certificates for Machine Owner Key verification"
+	@$(ECHO) "  to     $(PP_input)$(CertificateFolder)$(EOC)"
+	@$(ECHO) "  using  $(PP_input)$(OPENSSL)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help
-	@awk 'BEGIN {FS = ":.*##"; printf "\nThis Makefile allows one to generate a custom ISO to install Fedora\n\nUsage:\n  make $(PP_command)$(PP_variable)<target>$(EOC)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(PP_command)%-20s$(EOC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(PP_section)%s$(EOC):\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nThis Makefile allows one to generate a custom ISO to install Fedora\n\nUsage:\n  make $(PP_command)$(PP_variable)<target>$(EOC)\n"} /^[\/a-zA-Z_0-9-]+:.*?##/ { printf "  $(PP_command)%-20s$(EOC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(PP_section)%s$(EOC):\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 raw_help: ## Display the help without color
 	@$(MAKE) help --no-print-directory PP_command= PP_section= PP_variable= EOC=
@@ -119,22 +130,21 @@ raw_help: ## Display the help without color
 
 ##@ Check for requirements
 
-check_downloader: ## Check that the choosen downloader is installed
+check/downloader: ## Check that the choosen downloader is installed
 	@$(call check_command,Downloader)
-	@$(call check_command,DOWNLOAD)
 
-check_gpg_verifier: ## Check that the GPG verifier is installed
+check/gpg_verifier: ## Check that the GPG verifier is installed
 	@$(call check_command,GPG_VERIFY)
 
-check_shasum: ## Check that the sum checker is installed
+check/shasum: ## Check that the sum checker is installed
 	@$(call check_command,SHA256SUM)
 
-check_openssl: ## Check that openssl is installed
+check/openssl: ## Check that openssl is installed
 	@$(call check_command,OPENSSL)
 
-check_all: check_downloader check_gpg_verifier check_shasum check_openssl ## Check that all requirements are installed
+check/all: check/downloader check/gpg_verifier check/shasum check/openssl ## Check that all requirements are installed
 
-.PHONY: check_downloader check_gpg_verifier check_shasum check_openssl
+.PHONY: check/all check/downloader check/gpg_verifier check/shasum check/openssl
 
 ##@ Individual steps
 
@@ -146,19 +156,20 @@ certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Genera
 
 ##@ Removing generated files
 
-clean_downloads: ## Remove downloaded files
+clean/downloads: ## Remove downloaded files
 	$(RM) $(OfficialIso) $(OfficialChecksum) $(FedoraKey)
 
-clean_certificates: ## Remove certificates
+clean/certificates: ## Remove certificates
 	$(RM) -r $(CertificateFolder)
 
-clean_all: clean_downloads ## Remove all generated and downloaded files
+clean/all: clean/downloads clean/certificates ## Remove all generated and downloaded files
+	$(RM) -r check
 
-.PHONY: clean_downloads clean_all
+.PHONY: clean/downloads clean/certificates clean/all
 
 # Concrete rules
 
-$(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder) $(RPMFolder):
+$(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder):
 	mkdir -p $@
 
 # --------------- Second Expansion ---------------
@@ -167,18 +178,21 @@ $(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder) $(RPMFolder):
 # a prerequisite to use automatic variables like $@, $*, etc
 .SECONDEXPANSION:
 
-$(FedoraKey): check_downloader | $$(@D)
+$(FedoraKey): | $$(@D) check/downloader
 	$(DOWNLOAD) $(FedoraKeyURL)/$(@F)
+	@touch $@ # Update the timestamp to the time downloaded, not the time it was created upstream
 
-$(OfficialChecksum): $(FedoraKey) check_gpg_verifier
+$(OfficialChecksum): $(FedoraKey) | check/gpg_verifier
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
-	$(GPG_VERIFY) --keyring $< $@ || { rm $@ && false ; }
+	$(GPG_VERIFY) --keyring $< $@
+	@touch $@ # Because of course Fedora can only generate the checksum AFTER generating the ISO
 
-$(OfficialIso): $(OfficialChecksum) check_shasum
+$(OfficialIso): $(OfficialChecksum) | check/shasum
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
-	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) ) || { rm $@ && false ; }
+	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) )
+	@touch $@ # Using the upstream time would ALWAYS re-download the ISO as its dependency would be newer
 
-$(MachineOwnerKey) $(MachineOwnerDER) &: check_openssl | $$(@D)
+$(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -days 3650 \
 		-subj '/C=FR/L=Paris/CN=Antoine GAGNIERE/emailAddress=antoine@gagniere.dev' \
 		-addext 'subjectKeyIdentifier=hash' \
