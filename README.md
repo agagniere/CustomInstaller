@@ -12,7 +12,7 @@ If you just want to download Fedora official ISOs, this makefile can be of use:
  - verify the checksum was signed by Fedora
 
 ```shell
-# To download the Workstaion ISO for x86_64:
+# To download the Workstation ISO for x86_64:
 make download
 
 # You can choose the edition and architecture:

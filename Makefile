@@ -202,7 +202,7 @@ download: $(OfficialIso) ## Download the official ISO (and check its integrity)
 
 certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Generate a private public key pair used to sign the bootloader
 
-extract: $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) $(ExtractedTreeinfo) ## Extract bootloaders from the official ISO
+extract: $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) ## Extract bootloaders from the official ISO
 
 .PHONY: download
 
@@ -214,10 +214,14 @@ clean/downloads: ## Remove downloaded files
 clean/certificates: ## Remove certificates
 	$(RM) -r $(CertificateFolder)
 
-clean/all: clean/downloads clean/certificates ## Remove all generated and downloaded files
-	$(RM) -r check
+clean/extracted: ## Remove files extracted from the official ISO
+	$(RM) -r $(ExtractedFolder)
 
-.PHONY: clean/downloads clean/certificates clean/all
+clean: clean/certificates clean/extracted ## Clean generated and extracted files
+
+clean/all: clean/downloads clean ## Remove all generated, extracted and downloaded files
+
+.PHONY: clean/downloads clean/certificates clean/extracted clean clean/all
 
 # Concrete rules
 
@@ -260,7 +264,7 @@ $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 $(MachineOwnerPEM): $(MachineOwnerDER)
 	$(OPENSSL) x509 -in $< -inform DER -outform PEM -out $@
 
-$(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) $(ExtractedTreeinfo) &: $(OfficialIso) | $$(@D) check/xorriso
+$(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(@D) check/xorriso
 	$(XORRISO) -osirrox on -indev $< \
 		-extract /EFI/BOOT/BOOT$(ARCHEFI).EFI $(ExtractedShim) \
 		-extract /EFI/BOOT/grub$(ArchEFI).efi $(ExtractedGrub) \
