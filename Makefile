@@ -6,6 +6,7 @@
  # - wget or curl
  # - sha256sum or shasum
  # - openssl
+ # - xorriso
  #
  # Customizable parameters can be set via environment variables or the command line
  # Other variables can be overridden via the the command line
@@ -15,6 +16,19 @@
  #
  # For a human-readable description of what the current configuration is:
  # make summary
+##
+
+##
+ # |         |  Workstation  |     Server    |
+ # | ------- | ------------- | ------------- |
+ # | x86_64  |  To be tested | To be tested  |
+ # | aarch64 |       X       | To be tested  |
+ # | ppc64le | Download only | Download only |
+ # |  s390x  |       X       | Download only |
+ #
+ # TL;DR: x86_64  -> Workstation
+ #        aarch64 -> Server
+ #        ppc64le, s390x !?
 ##
 
 # ---------- Customizable parameters ----------
@@ -32,24 +46,15 @@ FedoraEdition       ?= Workstation
 Architecture        ?= x86_64
 # ---------------------------------------------
 
-# |         |  Workstation  |     Server    |
-# | ------- | ------------- | ------------- |
-# | x86_64  |  To be tested | To be tested  |
-# | aarch64 |       X       | To be tested  |
-# | ppc64le | Download only | Download only |
-# |  s390x  |       X       | Download only |
-#
-# TL;DR: x86_64  -> Workstation
-#        aarch64 -> Server
-#        ppc64le, s390x !?
-
 # ---------- Computed / Preset ----------
 # Commands
 GPG_VERIFY          := gpgv
 OPENSSL             := openssl
+XORRISO             := xorriso -no_rc
 
 # Folders
 GeneratedFolder     := generated
+ExtractedFolder     := extracted
 CertificateFolder   := $(GeneratedFolder)/certificates
 
 # OS specific
@@ -58,7 +63,7 @@ ifeq "$(shell uname)" "Darwin"
 	DownloadsFolder := $(shell osascript -e 'POSIX path of (path to downloads folder)')
 	SHA_SUM         := shasum --algorithm 256
 else
-	SHELL           := bash
+	SHELL           := bash -o errexit -o nounset -o pipefail
 	ECHO            := echo -e
 	DownloadsFolder != xdg-user-dir DOWNLOAD
 	SHA_SUM         := sha256sum
@@ -106,12 +111,15 @@ OfficialChecksum    := $(DownloadsFolder)/$(OfficialCheckName)
 MachineOwnerKey     := $(CertificateFolder)/MOK.priv
 MachineOwnerDER     := $(CertificateFolder)/MOK.der
 MachineOwnerPEM     := $(CertificateFolder)/MOK.pem
+ExtractedShim       := $(ExtractedFolder)/shim-$(Architecture).efi
+ExtractedGrub       := $(ExtractedFolder)/grub-$(Architecture).efi
+ExtractedMokManager := $(ExtractedFolder)/mok_manager-$(Architecture).efi
 # ---------------------------------------
 
 # ---------- Make Configuration ----------
 .DELETE_ON_ERROR: # Delete the target of a rule if its recipe execution fails
 .SUFFIXES:        # Disable atomatic suffix guessing
-#.ONESHELL:        # Perform a single shell invocation per recipe. Requires the shell to fail on error
+#.ONESHELL:        # Perform a single shell invocation per recipe. Only makes sense if the shell is set to exit on error !
 # ----------------------------------------
 
 # ---------- Colors ----------
@@ -150,6 +158,13 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  will generate certificates for Machine Owner Key verification"
 	@$(ECHO) "  to     $(PP_input)$(CertificateFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(OPENSSL)$(EOC)\n"
+	@$(ECHO) "$(PP_section)$(PP_command)extract$(EOC)"
+	@$(ECHO) "  will extract from the official ISO:"
+	@$(ECHO) "  - BOOT$(ARCHEFI).EFI"
+	@$(ECHO) "  - grub$(ArchEFI).efi"
+	@$(ECHO) "  - mm$(ArchEFI).efi"
+	@$(ECHO) "  to     $(PP_input)$(ExtractedFolder)$(EOC)"
+	@$(ECHO) "  using  $(PP_input)$(XORRISO)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help
@@ -174,15 +189,20 @@ check/shasum: ## Check that the sum checker is installed
 check/openssl: ## Check that openssl is installed
 	@$(call check_command,OPENSSL)
 
-check/all: check/downloader check/gpg_verifier check/shasum check/openssl ## Check that all requirements are installed
+check/xorriso: ## Check that xorriso is installed
+	@$(call check_command,XORRISO)
 
-.PHONY: check/all check/downloader check/gpg_verifier check/shasum check/openssl
+check/all: check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso ## Check that all requirements are installed
+
+.PHONY: check/all check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso
 
 ##@ Individual steps
 
 download: $(OfficialIso) ## Download the official ISO (and check its integrity)
 
 certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Generate a private public key pair used to sign the bootloader
+
+extract: $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) $(ExtractedTreeinfo) ## Extract bootloaders from the official ISO
 
 .PHONY: download
 
@@ -201,7 +221,7 @@ clean/all: clean/downloads clean/certificates ## Remove all generated and downlo
 
 # Concrete rules
 
-$(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder):
+$(DownloadsFolder) $(GeneratedFolder) $(ExtractedFolder) $(CertificateFolder):
 	mkdir -p $@
 
 # --------------- Second Expansion ---------------
@@ -239,3 +259,9 @@ $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 
 $(MachineOwnerPEM): $(MachineOwnerDER)
 	$(OPENSSL) x509 -in $< -inform DER -outform PEM -out $@
+
+$(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) $(ExtractedTreeinfo) &: $(OfficialIso) | $$(@D) check/xorriso
+	$(XORRISO) -osirrox on -indev $< \
+		-extract /EFI/BOOT/BOOT$(ARCHEFI).EFI $(ExtractedShim) \
+		-extract /EFI/BOOT/grub$(ArchEFI).efi $(ExtractedGrub) \
+		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
