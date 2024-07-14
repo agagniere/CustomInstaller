@@ -26,11 +26,22 @@ endif
 FedoraVersion       ?= 40-1.14
 
 # Workstation | Server
-FedoraFlavor        ?= Workstation
+FedoraEdition       ?= Workstation
 
-# x86_64 | aarch64 | ppc64le
+# x86_64 | aarch64 | ppc64le | s390x
 Architecture        ?= x86_64
 # ---------------------------------------------
+
+# |         |  Workstation  |     Server    |
+# | ------- | ------------- | ------------- |
+# | x86_64  |  To be tested | To be tested  |
+# | aarch64 |       X       | To be tested  |
+# | ppc64le | Download only | Download only |
+# |  s390x  |       X       | Download only |
+#
+# TL;DR: x86_64  -> Workstation
+#        aarch64 -> Server
+#        ppc64le, s390x !?
 
 # ---------- Computed / Preset ----------
 # Commands
@@ -62,14 +73,35 @@ else
 	DOWNLOAD        := $(Downloader)
 endif
 
+# Architecture specific
+ifeq "$(Architecture)" 'x86_64'
+	ARCHEFI         := X64
+	ArchEFI         := x64
+	FedoraChannel   := fedora/linux
+else ifeq "$(Architecture)" 'aarch64'
+	ARCHEFI         := AA64
+	ArchEFI         := aa64
+	FedoraChannel   := fedora/linux
+else
+	FedoraChannel   := fedora-secondary
+endif
+
+# Edition specific
+ifeq "$(FedoraEdition)" 'Workstation'
+	FedoraMethod    := Live
+else
+# dvd | netinst
+	FedoraMethod    := netinst
+endif
+
 FedoraMajor         := $(shell cut --delimiter '-' --field 1 <<< "$(FedoraVersion)")
 FedoraKeyName       := fedora.gpg
 FedoraKeyURL        := https://fedoraproject.org
 FedoraKey           := $(DownloadsFolder)/$(FedoraKeyName)
-OfficialIsoURL      := https://download.fedoraproject.org/pub/fedora/linux/releases/$(FedoraMajor)/$(FedoraFlavor)/$(Architecture)/iso
-OfficialIsoName     := Fedora-$(FedoraFlavor)-Live-$(Architecture)-$(FedoraVersion).iso
+OfficialIsoURL      := https://download.fedoraproject.org/pub/$(FedoraChannel)/releases/$(FedoraMajor)/$(FedoraEdition)/$(Architecture)/iso
+OfficialIsoName     := Fedora-$(FedoraEdition)-$(FedoraMethod)-$(Architecture)-$(FedoraVersion).iso
 OfficialIso         := $(DownloadsFolder)/$(OfficialIsoName)
-OfficialCheckName   := Fedora-$(FedoraFlavor)-$(FedoraVersion)-$(Architecture)-CHECKSUM
+OfficialCheckName   := Fedora-$(FedoraEdition)-$(FedoraVersion)-$(Architecture)-CHECKSUM
 OfficialChecksum    := $(DownloadsFolder)/$(OfficialCheckName)
 MachineOwnerKey     := $(CertificateFolder)/MOK.priv
 MachineOwnerDER     := $(CertificateFolder)/MOK.der
@@ -79,7 +111,7 @@ MachineOwnerPEM     := $(CertificateFolder)/MOK.pem
 # ---------- Make Configuration ----------
 .DELETE_ON_ERROR: # Delete the target of a rule if its recipe execution fails
 .SUFFIXES:        # Disable atomatic suffix guessing
-.ONESHELL:        # Perform a single shell invocation per recipe
+#.ONESHELL:        # Perform a single shell invocation per recipe. Requires the shell to fail on error
 # ----------------------------------------
 
 # ---------- Colors ----------
@@ -180,17 +212,20 @@ $(DownloadsFolder) $(GeneratedFolder) $(CertificateFolder):
 
 $(FedoraKey): | $$(@D) check/downloader
 	$(DOWNLOAD) $(FedoraKeyURL)/$(@F)
-	@touch $@ # Update the timestamp to the time downloaded, not the time it was created upstream
+	@touch $@
 
 $(OfficialChecksum): $(FedoraKey) | check/gpg_verifier
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
 	$(GPG_VERIFY) --keyring $< $@
-	@touch $@ # Because of course Fedora can only generate the checksum AFTER generating the ISO
+	@touch $@
 
 $(OfficialIso): $(OfficialChecksum) | check/shasum
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
-	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) )
-	@touch $@ # Using the upstream time would ALWAYS re-download the ISO as its dependency would be newer
+	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) 2> /dev/null )
+	@touch $@
+# Update the timestamp to the time downloaded, not the time it was created upstream
+# Because of course Fedora can only generate the checksum AFTER generating the ISO
+# Using the upstream time would ALWAYS want to re-download the ISO as its dependency would be newer
 
 $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -days 3650 \
