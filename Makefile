@@ -44,6 +44,14 @@ FedoraEdition       ?= Workstation
 
 # x86_64 | aarch64 | ppc64le | s390x
 Architecture        ?= x86_64
+
+FullName            ?= $(shell { read -p "Full Name: " name ; echo $$name ; } )
+UserName            ?= $(shell { read -p "User Name: " name ; echo $$name ; } )
+Password            ?= $(shell { read -s -p "Password: " word ; echo $$word ; } )
+RootPassword        ?= Password
+EmailAddress        ?= $(shell { read -p "Email Address: " adress ; echo $$adress; } )
+CountryCode         ?= FR
+Locality            ?= $(shell { read -p "City: " city ; echo $$city ; } )
 # ---------------------------------------------
 
 # ---------- Computed / Preset ----------
@@ -253,7 +261,7 @@ $(OfficialIso): $(OfficialChecksum) | check/shasum
 
 $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -days 3650 \
-		-subj '/C=FR/L=Paris/CN=Antoine GAGNIERE/emailAddress=antoine@gagniere.dev' \
+		-subj '/C=$(CountryCode)/L=$(Locality)/CN=$(FullName)/emailAddress=$(EmailAddress)' \
 		-addext 'subjectKeyIdentifier=hash' \
 		-addext 'authorityKeyIdentifier=keyid:always,issuer' \
 		-addext "basicConstraints=critical,CA:FALSE" \
