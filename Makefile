@@ -156,15 +156,15 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  using  $(PP_input)$(Downloader)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)certificates$(EOC)"
 	@$(ECHO) "  will generate certificates for Machine Owner Key verification"
-	@$(ECHO) "  to     $(PP_input)$(CertificateFolder)$(EOC)"
+	@$(ECHO) "  to     $(PP_input)$(realpath $(CertificateFolder))$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(OPENSSL)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)extract$(EOC)"
 	@$(ECHO) "  will extract from the official ISO:"
 	@$(ECHO) "  - BOOT$(ARCHEFI).EFI"
 	@$(ECHO) "  - grub$(ArchEFI).efi"
 	@$(ECHO) "  - mm$(ArchEFI).efi"
-	@$(ECHO) "  to     $(PP_input)$(ExtractedFolder)$(EOC)"
-	@$(ECHO) "  using  $(PP_input)$(XORRISO)$(EOC)\n"
+	@$(ECHO) "  to     $(PP_input)$(realpath $(ExtractedFolder))$(EOC)"
+	@$(ECHO) "  using  $(PP_input)$(firstword $(XORRISO))$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help

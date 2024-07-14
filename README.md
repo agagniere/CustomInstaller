@@ -1,4 +1,4 @@
-# Custom OS Installer
+# Custom Fedora Installer
 
 This set of scripts allows one to generate an ISO image with a custom set of RPMs and an automated installation script.
 
@@ -27,9 +27,9 @@ Downloader=curl make download
 
 Downloadable status as of Fedora 40 :
 
-|         | Workstation | Server |
-|:--------|:-----------:|:------:|
-| x86_64  | ✅          | ✅     |
-| aarch64 | ❌          | ✅     |
-| ppc64le | ✅          | ✅     |
-| s390x   | ❌          | ✅     |
+|           | Workstation | Server |
+|:----------|:-----------:|:------:|
+| `x86_64`  | ✅          | ✅     |
+| `aarch64` | ❌          | ✅     |
+| `ppc64le` | ✅          | ✅     |
+| `s390x`   | ❌          | ✅     |
