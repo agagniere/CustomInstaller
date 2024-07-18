@@ -36,7 +36,7 @@ Downloadable status as of Fedora 40 :
 
 ## Generating an ISO
 
-For conveniance, you can place all values you want to customized in a local file `values.sh`:
+For conveniance, you can place all values you want to customize in a local file `values.sh`:
 
 ```bash
 # Latest Fedora release
@@ -53,11 +53,8 @@ Downloader=wget
 
 # Used to create the initial user of the OS
 UserName=mname
-prompt -s -p "Password: " Password
-prompt -s -p "Root Password: " RootPassword
-# Or write a value directly:
-# Password=super_secret!123
-# RootPassword=even_more-secret#987
+Password=`read -s -p 'Password: ' password && openssl passwd -6 -salt SomeRandomSalt $password`
+RootPassword=`read -s -p 'Root Password: ' password && openssl passwd -6 -salt SomeRandomSalt $password`
 
 # Used to sign the bootloader
 FullName=My NAME

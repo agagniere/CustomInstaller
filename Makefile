@@ -47,7 +47,7 @@ Architecture        ?= x86_64
 
 FullName            ?= $(shell { read -p "Full Name: " name ; echo $$name ; } )
 UserName            ?= $(shell { read -p "User Name: " name ; echo $$name ; } )
-Password            ?= $(shell { read -s -p "Password: " word ; echo $$word ; } )
+Password            ?= $(shell { read -p 'Salt: ' salt && read -s -p "Password: " word && openssl passwd -6 -salt $$salt $$word ; } )
 RootPassword        ?= Password
 EmailAddress        ?= $(shell { read -p "Email Address: " adress ; echo $$adress; } )
 CountryCode         ?= FR
