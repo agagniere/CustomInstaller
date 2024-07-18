@@ -48,8 +48,8 @@ FedoraEdition=Workstation
 # x86_64 | aarch64 | ppc64le | s390x
 Architecture=x86_64
 
-# wget | curl
-Downloader=wget
+# wget | curl (defaults to using the first available)
+# Downloader=wget
 
 # Used to create the initial user of the OS
 UserName=mname

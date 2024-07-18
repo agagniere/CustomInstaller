@@ -54,16 +54,26 @@ CountryCode         ?= FR
 Locality            ?= $(shell { read -p "City: " city ; echo $$city ; } )
 # ---------------------------------------------
 
+# ---------- For use in envsubst ----------
+export FullName
+export UserName
+export Password
+export RootPassword
+export EmailAddress
+# -----------------------------------------
+
 # ---------- Computed / Preset ----------
 # Commands
 GPG_VERIFY          := gpgv
 OPENSSL             := openssl
 XORRISO             := xorriso -no_rc
+ENVSUBST            := envsubst
 
 # Folders
 GeneratedFolder     := generated
 ExtractedFolder     := extracted
 CertificateFolder   := $(GeneratedFolder)/certificates
+KickstartFolder     := $(GeneratedFolder)/kickstart
 
 # OS specific
 ifeq "$(shell uname)" "Darwin"
@@ -108,13 +118,22 @@ else
 endif
 
 FedoraMajor         := $(shell cut --delimiter '-' --field 1 <<< "$(FedoraVersion)")
-FedoraKeyName       := fedora.gpg
+
+# URLs
 FedoraKeyURL        := https://fedoraproject.org
-FedoraKey           := $(DownloadsFolder)/$(FedoraKeyName)
 OfficialIsoURL      := https://download.fedoraproject.org/pub/$(FedoraChannel)/releases/$(FedoraMajor)/$(FedoraEdition)/$(Architecture)/iso
+
+# File names
+FedoraKeyName       := fedora.gpg
 OfficialIsoName     := Fedora-$(FedoraEdition)-$(FedoraMethod)-$(Architecture)-$(FedoraVersion).iso
-OfficialIso         := $(DownloadsFolder)/$(OfficialIsoName)
 OfficialCheckName   := Fedora-$(FedoraEdition)-$(FedoraVersion)-$(Architecture)-CHECKSUM
+
+# Input Files
+KickstartTemplates  := $(wildcard kickstart/*.cfg)
+
+# Files created by this Makefile
+FedoraKey           := $(DownloadsFolder)/$(FedoraKeyName)
+OfficialIso         := $(DownloadsFolder)/$(OfficialIsoName)
 OfficialChecksum    := $(DownloadsFolder)/$(OfficialCheckName)
 MachineOwnerKey     := $(CertificateFolder)/MOK.priv
 MachineOwnerDER     := $(CertificateFolder)/MOK.der
@@ -122,6 +141,7 @@ MachineOwnerPEM     := $(CertificateFolder)/MOK.pem
 ExtractedShim       := $(ExtractedFolder)/shim-$(Architecture).efi
 ExtractedGrub       := $(ExtractedFolder)/grub-$(Architecture).efi
 ExtractedMokManager := $(ExtractedFolder)/mok_manager-$(Architecture).efi
+KickstartScripts    := $(KickstartTemplates:kickstart/%=$(KickstartFolder)/%)
 # ---------------------------------------
 
 # ---------- Make Configuration ----------
@@ -173,6 +193,13 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  - mm$(ArchEFI).efi"
 	@$(ECHO) "  to     $(PP_input)$(realpath $(ExtractedFolder))$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(firstword $(XORRISO))$(EOC)\n"
+	@$(ECHO) "$(PP_section)$(PP_command)evaluate$(EOC)"
+	@$(ECHO) "  will fill the values:"
+	@$(ECHO) "  - UserName: $(PP_input)$(UserName)$(EOC)"
+	@$(ECHO) "  - FullName: $(PP_input)$(FullName)$(EOC)"
+	@$(ECHO) "  in :$(addprefix \n  - ,$(KickstartTemplates))"
+	@$(ECHO) "  to     $(PP_input)$(realpath $(KickstartFolder))$(EOC)"
+	@$(ECHO) "  using  $(PP_input)$(ENVSUBST)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help
@@ -191,18 +218,21 @@ check/downloader: ## Check that the choosen downloader is installed
 check/gpg_verifier: ## Check that the GPG verifier is installed
 	@$(call check_command,GPG_VERIFY)
 
-check/shasum: ## Check that the sum checker is installed
+check/shasum: ## Check that the sum checker is installed. It is used to verify files integrity
 	@$(call check_command,SHA256SUM)
 
-check/openssl: ## Check that openssl is installed
+check/openssl: ## Check that openssl is installed. It is used to generate certificates
 	@$(call check_command,OPENSSL)
 
-check/xorriso: ## Check that xorriso is installed
+check/xorriso: ## Check that xorriso is installed. It is needed to extract from and modify ISOs
 	@$(call check_command,XORRISO)
 
-check/all: check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso ## Check that all requirements are installed
+check/envsubst: ## Check that envsubst is installed. It is used to evaluate templates using the environment
+	@$(call check_command,ENVSUBST)
 
-.PHONY: check/all check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso
+check/all: check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso check/envsubst ## Check that all requirements are installed
+
+.PHONY: check/all check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso check/envsubst
 
 ##@ Individual steps
 
@@ -211,6 +241,8 @@ download: $(OfficialIso) ## Download the official ISO (and check its integrity)
 certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Generate a private public key pair used to sign the bootloader
 
 extract: $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) ## Extract bootloaders from the official ISO
+
+evaluate: $(KickstartScripts) ## Evaluate templates with the current values. This includes kickstart scripts and GRUB configuration
 
 .PHONY: download
 
@@ -233,7 +265,7 @@ clean/all: clean/downloads clean ## Remove all generated, extracted and download
 
 # Concrete rules
 
-$(DownloadsFolder) $(GeneratedFolder) $(ExtractedFolder) $(CertificateFolder):
+$(DownloadsFolder) $(GeneratedFolder) $(ExtractedFolder) $(CertificateFolder) $(KickstartFolder):
 	mkdir -p $@
 
 # --------------- Second Expansion ---------------
@@ -246,12 +278,12 @@ $(FedoraKey): | $$(@D) check/downloader
 	$(DOWNLOAD) $(FedoraKeyURL)/$(@F)
 	@touch $@
 
-$(OfficialChecksum): $(FedoraKey) | check/gpg_verifier
+$(OfficialChecksum): $(FedoraKey) | $$(@D) check/downloader check/gpg_verifier
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
 	$(GPG_VERIFY) --keyring $< $@
 	@touch $@
 
-$(OfficialIso): $(OfficialChecksum) | check/shasum
+$(OfficialIso): $(OfficialChecksum) | $$(@D) check/downloader check/shasum
 	$(DOWNLOAD) $(OfficialIsoURL)/$(@F)
 	( cd $(@D) && $(SHA_SUM) --ignore-missing --check $(<F) 2> /dev/null )
 	@touch $@
@@ -269,7 +301,7 @@ $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 		-addext "nsComment=OpenSSL Generated Certificate" \
 		-outform DER -keyout $(MachineOwnerKey) -out $(MachineOwnerDER)
 
-$(MachineOwnerPEM): $(MachineOwnerDER)
+$(MachineOwnerPEM): $(MachineOwnerDER) | $$(@D) check/openssl
 	$(OPENSSL) x509 -in $< -inform DER -outform PEM -out $@
 
 $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(@D) check/xorriso
@@ -277,3 +309,6 @@ $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(
 		-extract /EFI/BOOT/BOOT$(ARCHEFI).EFI $(ExtractedShim) \
 		-extract /EFI/BOOT/grub$(ArchEFI).efi $(ExtractedGrub) \
 		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
+
+$(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
+	$(ENVSUBST) < $< > $@
