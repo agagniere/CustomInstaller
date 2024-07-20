@@ -149,6 +149,7 @@ ExtractedGrub       := $(ExtractedFolder)/grub-$(Architecture).efi
 ExtractedMokManager := $(ExtractedFolder)/mok_manager-$(Architecture).efi
 KickstartScripts    := $(KickstartTemplates:kickstart/%=$(KickstartFolder)/%)
 GrubConfig          := $(GrubFolder)/grub.cfg
+IsoImage            := $(GeneratedFolder)/$(IsoLabel).iso
 # ---------------------------------------
 
 # ---------- Make Configuration ----------
@@ -255,6 +256,12 @@ grub/config: $(GrubConfig) ## Generate GRUB configuration: Create an entry for e
 
 .PHONY: download certificates extract evaluate grub/config
 
+##@ ISO Generation
+
+iso: $(IsoImage) ## Generate a bootable ISO image
+
+.PHONY: iso
+
 ##@ Removing generated files
 
 clean/downloads: ## Remove downloaded files
@@ -269,12 +276,15 @@ clean/extracted: ## Remove files extracted from the official ISO
 clean/evaluated: ## Remove generated kickstart scripts
 	$(RM) -r $(KickstartFolder)
 
+clean/iso: ## Only remove generated ISO images
+	$(RM) $(IsoImage)
+
 clean: clean/extracted ## Clean all generated and extracted files
 	$(RM) -r $(GeneratedFolder)
 
 clean/all: clean/downloads clean ## Remove all generated, extracted and downloaded files
 
-.PHONY: clean/downloads clean/certificates clean/extracted clean/evaluated clean clean/all
+.PHONY: clean/downloads clean/certificates clean/extracted clean/evaluated clean/iso clean clean/all
 
 # Concrete rules
 
@@ -323,8 +333,8 @@ $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(
 		-extract /EFI/BOOT/grub$(ArchEFI).efi $(ExtractedGrub) \
 		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
 
-$(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
-	$(ENVSUBST) $(EnvsubstFormat) < $< | sed 's|^%shard \(.*\)$$|/run/install/repo/kickstart/\1.cfg|' > $@
+$(KickstartScripts): $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
+	$(ENVSUBST) $(EnvsubstFormat) < $< | sed 's|^%shard \(.*\)$$|%ksappend /run/install/repo/kickstart/\1.cfg|' > $@
 
 $(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $$(@D)
 	printf "search --no-floppy --set=root --label '$(IsoLabel)'\n\n" > $@
@@ -335,5 +345,18 @@ $(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $
 		printf "menuentry '%s' --class fedora --class gnu --class os --id '%s' {\n\tset gfxpayload=keep\n\tlinuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$(IsoLabel) inst.repo=hd:LABEL=$(IsoLabel):/ inst.ks=hd:LABEL=$(IsoLabel):/%s quiet\n\tinitrdefi /images/pxeboot/initrd.img\n}\n" "$$title" "$$id" "$$entry" >> $@ ; \
 	done
 
-$(GrubFolder)/grub.cfg: grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D)
+$(GrubConfig): grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D)
 	cat $^ > $@
+
+$(IsoImage): $(OfficialIso) $(GrubConfig) $(KickstartScripts) | $$(@D) check/xorriso
+	$(XORRISO) \
+		-indev $< \
+		-outdev $@ \
+		-map $(GrubConfig)      EFI/BOOT/grub.cfg \
+		-map $(KickstartFolder) kickstart \
+		-chmod_r a+r,a-w / -- \
+		-boot_image any replay \
+		-as mkisofs \
+		-iso-level 3 -full-iso9660-filenames \
+		-joliet -joliet-long -rational-rock \
+		-volid "$(IsoLabel)" --preparer "$(FullName)"
