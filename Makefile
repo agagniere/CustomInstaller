@@ -324,16 +324,14 @@ $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(
 		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
 
 $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
-	$(ENVSUBST) $(EnvsubstFormat) < $< > $@
+	$(ENVSUBST) $(EnvsubstFormat) < $< | sed 's|^%shard \(.*\)$$|/run/install/repo/kickstart/\1.cfg|' > $@
 
 $(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $$(@D)
 	printf "search --no-floppy --set=root --label '$(IsoLabel)'\n\n" > $@
 	for entry in $^ ; \
 	do \
-		$(ECHO) "$(Bold)# $$entry #$(EOC)" ; \
 		title=$$(head -1 $$entry | cut -d'"' -f2) ; \
 		id=$${entry#*entry_} ; id=$${id%.*} ; \
-		$(ECHO) "'$$title', '$$id'" ; \
 		printf "menuentry '%s' --class fedora --class gnu --class os --id '%s' {\n\tset gfxpayload=keep\n\tlinuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$(IsoLabel) inst.repo=hd:LABEL=$(IsoLabel):/ inst.ks=hd:LABEL=$(IsoLabel):/%s quiet\n\tinitrdefi /images/pxeboot/initrd.img\n}\n" "$$title" "$$id" "$$entry" >> $@ ; \
 	done
 

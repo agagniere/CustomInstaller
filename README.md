@@ -69,3 +69,34 @@ Then source the file before calling make:
 set -a && source ./values.sh
 make iso
 ```
+
+## Adding a custom entry
+
+You want an ISO that install a specific set of packages, with a tailored partitioning scheme ? You don't have to write a GRUB configuration file !
+
+Just create a `.cfg` file with a name starting with `entry_` in the `kickstart` folder, like `kickstart/entry_myinstaller.cfg`:
+
+```bash
+# Entry name : "Install things my way" <- Set the name of your entry as it will appear in the GRUB menu
+
+# Include other kickstart files with this special syntax:
+%shard common
+%shard ntp
+# It will include kickstart/common.cfg and kickstart/ntp.cfg
+
+# And use any official kickstart command:
+
+%packages
+	@Headless-Management
+	@Container-Management --optional
+%end
+
+skipx
+
+selinux --enforcing
+
+clearpart --all --drives=sda
+partition /boot/efi           --ondisk=sda 1024
+partition /     --fstype=ext4 --ondisk=sda --grow
+partition /home --fstype=ext4 --ondisk=sdb --noformat --usepart=LABEL=MY_HOME
+```
