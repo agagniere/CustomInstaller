@@ -77,6 +77,7 @@ GeneratedFolder     := generated
 ExtractedFolder     := extracted
 CertificateFolder   := $(GeneratedFolder)/certificates
 KickstartFolder     := $(GeneratedFolder)/kickstart
+GrubFolder          := $(GeneratedFolder)/grub
 
 # OS specific
 ifeq "$(shell uname)" "Darwin"
@@ -121,6 +122,8 @@ else
 endif
 
 FedoraMajor         := $(shell cut --delimiter '-' --field 1 <<< "$(FedoraVersion)")
+IsoLabel            := Fedora_$(FedoraVersion)_$(Architecture)
+FatLabel            := BOOT_EFI
 
 # URLs
 FedoraKeyURL        := https://fedoraproject.org
@@ -145,6 +148,7 @@ ExtractedShim       := $(ExtractedFolder)/shim-$(Architecture).efi
 ExtractedGrub       := $(ExtractedFolder)/grub-$(Architecture).efi
 ExtractedMokManager := $(ExtractedFolder)/mok_manager-$(Architecture).efi
 KickstartScripts    := $(KickstartTemplates:kickstart/%=$(KickstartFolder)/%)
+GrubConfig          := $(GrubFolder)/grub.cfg
 # ---------------------------------------
 
 # ---------- Make Configuration ----------
@@ -245,9 +249,11 @@ certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Genera
 
 extract: $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) ## Extract bootloaders from the official ISO
 
-evaluate: $(KickstartScripts) ## Evaluate templates with the current values. This includes kickstart scripts and GRUB configuration
+evaluate: $(KickstartScripts) ## Evaluate kickstart scripts templates with the current values.
 
-.PHONY: download
+grub/config: $(GrubConfig) ## Generate GRUB configuration: Create an entry for each kickstart script starting with 'entry_'.
+
+.PHONY: download certificates extract evaluate grub/config
 
 ##@ Removing generated files
 
@@ -260,15 +266,19 @@ clean/certificates: ## Remove certificates
 clean/extracted: ## Remove files extracted from the official ISO
 	$(RM) -r $(ExtractedFolder)
 
-clean: clean/certificates clean/extracted ## Clean generated and extracted files
+clean/evaluated: ## Remove generated kickstart scripts
+	$(RM) -r $(KickstartFolder)
+
+clean: clean/extracted ## Clean all generated and extracted files
+	$(RM) -r $(GeneratedFolder)
 
 clean/all: clean/downloads clean ## Remove all generated, extracted and downloaded files
 
-.PHONY: clean/downloads clean/certificates clean/extracted clean clean/all
+.PHONY: clean/downloads clean/certificates clean/extracted clean/evaluated clean clean/all
 
 # Concrete rules
 
-$(DownloadsFolder) $(GeneratedFolder) $(ExtractedFolder) $(CertificateFolder) $(KickstartFolder):
+$(DownloadsFolder) $(GeneratedFolder) $(ExtractedFolder) $(CertificateFolder) $(KickstartFolder) $(GrubFolder):
 	mkdir -p $@
 
 # --------------- Second Expansion ---------------
@@ -315,3 +325,17 @@ $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(
 
 $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
 	$(ENVSUBST) $(EnvsubstFormat) < $< > $@
+
+$(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $$(@D)
+	printf "search --no-floppy --set=root --label '$(IsoLabel)'\n\n" > $@
+	for entry in $^ ; \
+	do \
+		$(ECHO) "$(Bold)# $$entry #$(EOC)" ; \
+		title=$$(head -1 $$entry | cut -d'"' -f2) ; \
+		id=$${entry#*entry_} ; id=$${id%.*} ; \
+		$(ECHO) "'$$title', '$$id'" ; \
+		printf "menuentry '%s' --class fedora --class gnu --class os --id '%s' {\n\tset gfxpayload=keep\n\tlinuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$(IsoLabel) inst.repo=hd:LABEL=$(IsoLabel):/ inst.ks=hd:LABEL=$(IsoLabel):/%s quiet\n\tinitrdefi /images/pxeboot/initrd.img\n}\n" "$$title" "$$id" "$$entry" >> $@ ; \
+	done
+
+$(GrubFolder)/grub.cfg: grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D)
+	cat $^ > $@
