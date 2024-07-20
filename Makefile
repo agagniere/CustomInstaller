@@ -52,6 +52,9 @@ RootPassword        ?= Password
 EmailAddress        ?= $(shell { read -p "Email Address: " adress ; echo $$adress; } )
 CountryCode         ?= FR
 Locality            ?= $(shell { read -p "City: " city ; echo $$city ; } )
+
+# Only substitute variables listed here
+EnvsubstFormat      += '$FullName$UserName$Password$RootPassword$EmailAddress'
 # ---------------------------------------------
 
 # ---------- For use in envsubst ----------
@@ -311,4 +314,4 @@ $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(
 		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
 
 $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
-	$(ENVSUBST) < $< > $@
+	$(ENVSUBST) $(EnvsubstFormat) < $< > $@
