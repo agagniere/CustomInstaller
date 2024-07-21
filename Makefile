@@ -33,7 +33,7 @@
 
 # ---------- Customizable parameters ----------
 # wget | curl
-ifeq "$(origin Downloader)" "undefined"
+ifeq "$(origin Downloader)" 'undefined'
 	Downloader      := $(shell command -v wget > /dev/null && echo wget || echo curl)
 endif
 
@@ -45,11 +45,15 @@ FedoraEdition       ?= Workstation
 # x86_64 | aarch64 | ppc64le | s390x
 Architecture        ?= x86_64
 
-FullName            ?= $(shell { read -p "Full Name: " name ; echo $$name ; } )
-UserName            ?= $(shell { read -p "User Name: " name ; echo $$name ; } )
-Password            ?= $(shell { read -p 'Salt: ' salt && read -s -p "Password: " word && openssl passwd -6 -salt $$salt $$word ; } )
-RootPassword        ?= Password
-EmailAddress        ?= $(shell { read -p "Email Address: " adress ; echo $$adress; } )
+FullName            ?= Your NAME
+UserName            ?= yname
+ifeq "$(origin Password)" 'undefined'
+	Password        := $(shell openssl passwd -6 -salt sugar pepper)
+endif
+ifeq "$(origin RootPassword)" 'undefined'
+	RootPassword    := $(Password)
+endif
+EmailAddress        ?= your.name@example.com
 WorldRegion         ?= America
 CountryCode         ?= US
 City                ?= New_York
@@ -57,23 +61,13 @@ Languages           ?= en_US.utf8
 KeyboardLayouts     ?= us
 NtpPool             ?= 2.fedora.pool.ntp.org
 DefaultEntry        ?= shutdown
+ifeq "$(origin TimeZone)" 'undefined'
+	TimeZone        := $(WorldRegion)/$(City)
+endif
 
-# Only substitute variables listed here
-EnvsubstFormat      += '$$FullName$$UserName$$Password$$RootPassword$$EmailAddress$$TimeZone$$Languages$$KeyboardLayouts$$NtpPool'
-
-# Overidable
-TimeZone            ?= $(WorldRegion)/$(City)
+# In templates, only substitute variables listed here
+ExportedVariables   += FullName UserName Password RootPassword TimeZone Languages KeyboardLayouts NtpPool
 # ---------------------------------------------
-
-# ---------- For use in envsubst ----------
-export FullName
-export UserName
-export Password
-export RootPassword
-export EmailAddress
-export Languages
-export KeyboardLayouts
-# -----------------------------------------
 
 # ---------- Computed / Preset ----------
 # Commands
@@ -95,7 +89,8 @@ ifeq "$(shell uname)" "Darwin"
 	DownloadsFolder := $(shell osascript -e 'POSIX path of (path to downloads folder)')
 	SHA_SUM         := shasum --algorithm 256
 else
-	SHELL           := bash -o errexit -o nounset -o pipefail
+	SHELL           := bash
+	.SHELLFLAGS     := -o errexit -o nounset -o pipefail -c
 	ECHO            := echo -e
 	DownloadsFolder != xdg-user-dir DOWNLOAD
 	SHA_SUM         := sha256sum
@@ -181,9 +176,14 @@ PP_error            := $(Red)
 PP_variable         := $(Italic)
 # ----------------------------
 
+# ---------- Functions ----------
 check_command        = command -v $(value $(1)) > /dev/null || \
 	$(ECHO) "$(PP_error)Missing dependency $(Bold)$(firstword $(value $(1)))$(EOC)," \
 	"consider installing it or overriding the $(Bold)$(Italic)$(1)$(EOC) variable"
+# -------------------------------
+
+#Exporting variables for envsubst
+$(foreach varible,$(ExportedVariables),$(eval export $(variable)))
 
 # Phony rules
 
@@ -211,13 +211,14 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  - mm$(ArchEFI).efi"
 	@$(ECHO) "  to     $(PP_input)$(ExtractedFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(firstword $(XORRISO))$(EOC)\n"
-	@$(ECHO) "$(PP_section)$(PP_command)evaluate$(EOC)"
-	@$(ECHO) "  will fill the values:"
-	@$(ECHO) "  - UserName: $(PP_input)$(UserName)$(EOC)"
-	@$(ECHO) "  - FullName: $(PP_input)$(FullName)$(EOC)"
+	@$(ECHO) "$(PP_section)$(PP_command)evaluate$(EOC)\n  will fill the values:"
+	@printf  "  - % -20s: %.40s\n" $(foreach var,$(ExportedVariables),$(var) '$(subst $(quote),,$(value $(var)))')
 	@$(ECHO) "  in :$(addprefix \n  - ,$(KickstartTemplates))"
 	@$(ECHO) "  to     $(PP_input)$(KickstartFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(ENVSUBST)$(EOC)\n"
+	@$(ECHO) "$(PP_section)$(PP_command)grub/config$(EOC)"
+	@$(ECHO) "  will generate a grub configuration with the following entries:"
+	@printf  "  - % -15s: $(PP_input)%.45s$(EOC)\n" $(foreach entry,$(filter kickstart/entry_%,$(KickstartTemplates)),`a=$(entry);b=$${a#*entry_};c=$${b%.*};echo $$c` "`head -1 $(entry) | cut -d'"' -f2`")
 	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help
@@ -344,7 +345,7 @@ $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(
 		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
 
 $(KickstartScripts): $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
-	$(ENVSUBST) $(EnvsubstFormat) < $< | sed 's|^%shard \(.*\)$$|%ksappend /run/install/repo/kickstart/\1.cfg|' > $@
+	$(ENVSUBST) '$(ExportedVariables:%=$$%)' < $< | sed 's|^%shard \(.*\)$$|%ksappend /run/install/repo/kickstart/\1.cfg|' > $@
 
 $(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $$(@D)
 	printf "default=$(DefaultEntry)\n" > $@
@@ -372,3 +373,6 @@ $(IsoImage): $(OfficialIso) $(GrubConfig) $(KickstartScripts) | $$(@D) check/xor
 		-iso-level 3 -full-iso9660-filenames \
 		-joliet -joliet-long -rational-rock \
 		-volid "$(IsoLabel)" --preparer "$(FullName)"
+
+# Put at the end because it is not well parsed by editors providing syntax color
+quote := '

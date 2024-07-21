@@ -57,27 +57,26 @@ Password=`read -s -p 'Password: ' password && openssl passwd -6 -salt SomeRandom
 RootPassword=`read -s -p 'Root Password: ' password && openssl passwd -6 -salt SomeRandomSalt $password`
 
 # Used to sign the bootloader (except WorldRegion that is used with City to specify the timezone)
-FullName=My NAME
+FullName="My NAME"
 EmailAddress=my.name@example.com
 WorldRegion=America
 CountryCode=US
 City=New_York
 
 # Used during installation and on the target system
-KeyboardLayouts=us,'cz (qwery)'
+KeyboardLayouts="us,'cz (qwery)'"
 Languages=en_US
-# Languages='--addsupport=en_GB en_US.utf8'
+# Languages="--addsupport=en_GB en_US.utf8"
 NtpPool=3.fedora.pool.ntp.org
 
-# It is possible to override the timezone (as your City might not be in https://vpodzime.fedorapeople.org/timezones_list.txt)
+# It is possible to override the timezone (if the City you want mentionned in the certificate is not in https://vpodzime.fedorapeople.org/timezones_list.txt)
 # TimeZone=America/Toronto
 ```
 
 Then source the file before calling make:
 
 ```bash
-set -a && source ./values.sh
-make iso
+( set -a && source ./values.sh && make iso )
 ```
 
 ## Adding a custom entry
