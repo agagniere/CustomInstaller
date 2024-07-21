@@ -50,13 +50,17 @@ UserName            ?= $(shell { read -p "User Name: " name ; echo $$name ; } )
 Password            ?= $(shell { read -p 'Salt: ' salt && read -s -p "Password: " word && openssl passwd -6 -salt $$salt $$word ; } )
 RootPassword        ?= Password
 EmailAddress        ?= $(shell { read -p "Email Address: " adress ; echo $$adress; } )
-CountryCode         ?= FR
-Locality            ?= $(shell { read -p "City: " city ; echo $$city ; } )
+WorldRegion         ?= America
+CountryCode         ?= US
+City                ?= New_York
 Languages           ?= en_US.utf8
 KeyboardLayouts     ?= us
 
 # Only substitute variables listed here
-EnvsubstFormat      += '$$FullName$$UserName$$Password$$RootPassword$$EmailAddress$$Languages$$KeyboardLayouts'
+EnvsubstFormat      += '$$FullName$$UserName$$Password$$RootPassword$$EmailAddress$$TimeZone$$Languages$$KeyboardLayouts$$NtpPool'
+
+# Overidable
+TimeZone            ?= $(WorldRegion)/$(City)
 # ---------------------------------------------
 
 # ---------- For use in envsubst ----------
@@ -320,7 +324,7 @@ $(OfficialIso): $(OfficialChecksum) | $$(@D) check/downloader check/shasum
 
 $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -days 3650 \
-		-subj '/C=$(CountryCode)/L=$(Locality)/CN=$(FullName)/emailAddress=$(EmailAddress)' \
+		-subj '/C=$(CountryCode)/L=$(City)/CN=$(FullName)/emailAddress=$(EmailAddress)' \
 		-addext 'subjectKeyIdentifier=hash' \
 		-addext 'authorityKeyIdentifier=keyid:always,issuer' \
 		-addext "basicConstraints=critical,CA:FALSE" \

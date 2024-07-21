@@ -56,15 +56,21 @@ UserName=mname
 Password=`read -s -p 'Password: ' password && openssl passwd -6 -salt SomeRandomSalt $password`
 RootPassword=`read -s -p 'Root Password: ' password && openssl passwd -6 -salt SomeRandomSalt $password`
 
-# Used to sign the bootloader
+# Used to sign the bootloader (except WorldRegion that is used with City to specify the timezone)
 FullName=My NAME
 EmailAddress=my.name@example.com
+WorldRegion=America
 CountryCode=US
-Locality=New York
+City=New_York
 
-# Installed on the target system
+# Used during installation and on the target system
 KeyboardLayouts=us,'cz (qwery)'
-Languages=--addsupport=en_GB en_US
+Languages=en_US
+# Languages=--addsupport=en_GB en_US
+NtpPool=3.fedora.pool.ntp.org
+
+# It is possible to override the timezone (as your City might not be in https://vpodzime.fedorapeople.org/timezones_list.txt)
+# TimeZone=America/Toronto
 ```
 
 Then source the file before calling make:
@@ -85,8 +91,7 @@ Just create a `.cfg` file with a name starting with `entry_` in the `kickstart` 
 
 # Include other kickstart files with this special syntax:
 %shard common
-%shard ntp
-# It will include kickstart/common.cfg and kickstart/ntp.cfg
+# It will include kickstart/common.cfg
 
 # And use any official kickstart command:
 
