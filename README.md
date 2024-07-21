@@ -66,7 +66,7 @@ City=New_York
 # Used during installation and on the target system
 KeyboardLayouts=us,'cz (qwery)'
 Languages=en_US
-# Languages=--addsupport=en_GB en_US
+# Languages='--addsupport=en_GB en_US.utf8'
 NtpPool=3.fedora.pool.ntp.org
 
 # It is possible to override the timezone (as your City might not be in https://vpodzime.fedorapeople.org/timezones_list.txt)
@@ -109,3 +109,5 @@ partition /boot/efi           --ondisk=sda 1024
 partition /     --fstype=ext4 --ondisk=sda --grow
 partition /home --fstype=ext4 --ondisk=sdb --noformat --usepart=LABEL=MY_HOME
 ```
+
+If you want this entry to be the default in GRUB, add `DefaultEntry=myinstaller` to `values.sh`.

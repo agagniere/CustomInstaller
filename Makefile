@@ -55,6 +55,8 @@ CountryCode         ?= US
 City                ?= New_York
 Languages           ?= en_US.utf8
 KeyboardLayouts     ?= us
+NtpPool             ?= 2.fedora.pool.ntp.org
+DefaultEntry        ?= shutdown
 
 # Only substitute variables listed here
 EnvsubstFormat      += '$$FullName$$UserName$$Password$$RootPassword$$EmailAddress$$TimeZone$$Languages$$KeyboardLayouts$$NtpPool'
@@ -200,21 +202,21 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  using  $(PP_input)$(Downloader)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)certificates$(EOC)"
 	@$(ECHO) "  will generate certificates for Machine Owner Key verification"
-	@$(ECHO) "  to     $(PP_input)$(realpath $(CertificateFolder))$(EOC)"
+	@$(ECHO) "  to     $(PP_input)$(CertificateFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(OPENSSL)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)extract$(EOC)"
 	@$(ECHO) "  will extract from the official ISO:"
 	@$(ECHO) "  - BOOT$(ARCHEFI).EFI"
 	@$(ECHO) "  - grub$(ArchEFI).efi"
 	@$(ECHO) "  - mm$(ArchEFI).efi"
-	@$(ECHO) "  to     $(PP_input)$(realpath $(ExtractedFolder))$(EOC)"
+	@$(ECHO) "  to     $(PP_input)$(ExtractedFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(firstword $(XORRISO))$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)evaluate$(EOC)"
 	@$(ECHO) "  will fill the values:"
 	@$(ECHO) "  - UserName: $(PP_input)$(UserName)$(EOC)"
 	@$(ECHO) "  - FullName: $(PP_input)$(FullName)$(EOC)"
 	@$(ECHO) "  in :$(addprefix \n  - ,$(KickstartTemplates))"
-	@$(ECHO) "  to     $(PP_input)$(realpath $(KickstartFolder))$(EOC)"
+	@$(ECHO) "  to     $(PP_input)$(KickstartFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(ENVSUBST)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
@@ -345,12 +347,13 @@ $(KickstartScripts): $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/en
 	$(ENVSUBST) $(EnvsubstFormat) < $< | sed 's|^%shard \(.*\)$$|%ksappend /run/install/repo/kickstart/\1.cfg|' > $@
 
 $(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $$(@D)
-	printf "search --no-floppy --set=root --label '$(IsoLabel)'\n\n" > $@
+	printf "default=$(DefaultEntry)\n" > $@
+	printf "search --no-floppy --set=root --label '$(IsoLabel)'\n\n" >> $@
 	for entry in $^ ; \
 	do \
 		title=$$(head -1 $$entry | cut -d'"' -f2) ; \
 		id=$${entry#*entry_} ; id=$${id%.*} ; \
-		printf "menuentry '%s' --class fedora --class gnu --class os --id '%s' {\n\tset gfxpayload=keep\n\tlinuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$(IsoLabel) inst.repo=hd:LABEL=$(IsoLabel):/ inst.ks=hd:LABEL=$(IsoLabel):/%s quiet\n\tinitrdefi /images/pxeboot/initrd.img\n}\n" "$$title" "$$id" "$$entry" >> $@ ; \
+		printf "menuentry '%s' --class fedora --class gnu --class os --id '%s' {\n\tset gfxpayload=keep\n\tlinuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$(IsoLabel) inst.repo=hd:LABEL=$(IsoLabel):/ inst.ks=hd:LABEL=$(IsoLabel):/%s quiet\n\tinitrdefi /images/pxeboot/initrd.img\n}\n\n" "$$title" "$$id" "$$entry" >> $@ ; \
 	done
 
 $(GrubConfig): grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D)
