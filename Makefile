@@ -52,9 +52,11 @@ RootPassword        ?= Password
 EmailAddress        ?= $(shell { read -p "Email Address: " adress ; echo $$adress; } )
 CountryCode         ?= FR
 Locality            ?= $(shell { read -p "City: " city ; echo $$city ; } )
+Languages           ?= en_US.utf8
+KeyboardLayouts     ?= us
 
 # Only substitute variables listed here
-EnvsubstFormat      += '$FullName$UserName$Password$RootPassword$EmailAddress'
+EnvsubstFormat      += '$$FullName$$UserName$$Password$$RootPassword$$EmailAddress$$Languages$$KeyboardLayouts'
 # ---------------------------------------------
 
 # ---------- For use in envsubst ----------
@@ -63,6 +65,8 @@ export UserName
 export Password
 export RootPassword
 export EmailAddress
+export Languages
+export KeyboardLayouts
 # -----------------------------------------
 
 # ---------- Computed / Preset ----------
@@ -349,6 +353,7 @@ $(GrubConfig): grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D
 	cat $^ > $@
 
 $(IsoImage): $(OfficialIso) $(GrubConfig) $(KickstartScripts) | $$(@D) check/xorriso
+	$(RM) $@
 	$(XORRISO) \
 		-indev $< \
 		-outdev $@ \

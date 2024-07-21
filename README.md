@@ -61,6 +61,10 @@ FullName=My NAME
 EmailAddress=my.name@example.com
 CountryCode=US
 Locality=New York
+
+# Installed on the target system
+KeyboardLayouts=us,'cz (qwery)'
+Languages=--addsupport=en_GB en_US
 ```
 
 Then source the file before calling make:
