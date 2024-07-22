@@ -149,9 +149,7 @@ OfficialChecksum    := $(DownloadsFolder)/$(OfficialCheckName)
 MachineOwnerKey     := $(CertificateFolder)/MOK.priv
 MachineOwnerDER     := $(CertificateFolder)/MOK.der
 MachineOwnerPEM     := $(CertificateFolder)/MOK.pem
-ExtractedShim       := $(ExtractedFolder)/shim-$(Architecture).efi
-ExtractedGrub       := $(ExtractedFolder)/grub-$(Architecture).efi
-ExtractedMokManager := $(ExtractedFolder)/mok_manager-$(Architecture).efi
+ExtractedBootloaders:= $(addprefix $(ExtractedFolder)/,BOOT$(ARCHEFI).EFI grub$(ArchEFI).efi mm$(ArchEFI).efi)
 KickstartScripts    := $(KickstartTemplates:kickstart/%=$(KickstartFolder)/%)
 GrubConfig          := $(GrubFolder)/grub.cfg
 IsoImage            := $(GeneratedFolder)/$(IsoLabel).iso
@@ -195,9 +193,7 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "\nReady to generate a bootable ISO for Fedora $(PP_input)$(FedoraMajor)$(EOC) ($(FedoraVersion))\n"
 	@$(ECHO) "When ready:\n  make $(PP_command)$(PP_variable)<step>$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)download$(EOC)\n  will download:"
-	@$(ECHO) "  - "$(FedoraKeyName)
-	@$(ECHO) "  - "$(OfficialCheckName)
-	@$(ECHO) "  - "$(OfficialIsoName)
+	@printf  "  - %s\n" $(FedoraKeyName) $(OfficialCheckName) $(OfficialIsoName)
 	@$(ECHO) "  to     $(PP_input)$(DownloadsFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(Downloader)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)certificates$(EOC)"
@@ -206,9 +202,7 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  using  $(PP_input)$(OPENSSL)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)extract$(EOC)"
 	@$(ECHO) "  will extract from the official ISO:"
-	@$(ECHO) "  - BOOT$(ARCHEFI).EFI"
-	@$(ECHO) "  - grub$(ArchEFI).efi"
-	@$(ECHO) "  - mm$(ArchEFI).efi"
+	@printf  "  - %s\n" $(ExtractedBootloaders:$(ExtractedFolder)/%=%)
 	@$(ECHO) "  to     $(PP_input)$(ExtractedFolder)$(EOC)"
 	@$(ECHO) "  using  $(PP_input)$(firstword $(XORRISO))$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)evaluate$(EOC)\n  will fill the values:"
@@ -218,8 +212,10 @@ summary: ## Sum up what the makefile will do, given the current configuration
 	@$(ECHO) "  using  $(PP_input)$(ENVSUBST)$(EOC)\n"
 	@$(ECHO) "$(PP_section)$(PP_command)grub/config$(EOC)"
 	@$(ECHO) "  will generate a grub configuration with the following entries:"
-	@printf  "  - % -15s: $(PP_input)%.45s$(EOC)\n" $(foreach entry,$(filter kickstart/entry_%,$(KickstartTemplates)),`a=$(entry);b=$${a#*entry_};c=$${b%.*};echo $$c` "`head -1 $(entry) | cut -d'"' -f2`")
-	@$(ECHO) "$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
+	@printf  "  - % -15s: $(PP_input)%.45s$(EOC)\n" $(foreach entry,$(filter kickstart/entry_%,$(KickstartTemplates)),\
+	`a=$(entry);b=$${a#*entry_};c=$${b%.*};echo $$c`\
+	"`head -1 $(entry) | cut -d'\"' -f2`")
+	@$(ECHO) "\n$(PP_section)$(PP_command)help$(EOC)\n  to learn how to use this makefile\n"
 
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nThis Makefile allows one to generate a custom ISO to install Fedora\n\nUsage:\n  make $(PP_command)$(PP_variable)<target>$(EOC)\n"} /^[\/a-zA-Z_0-9-]+:.*?##/ { printf "  $(PP_command)%-20s$(EOC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(PP_section)%s$(EOC):\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -259,7 +255,7 @@ download: $(OfficialIso) ## Download the official ISO (and check its integrity)
 
 certificates: $(MachineOwnerPEM) $(MachineOwnerDER) $(MachineOwnerKey) ## Generate a private public key pair used to sign the bootloader
 
-extract: $(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) ## Extract bootloaders from the official ISO
+extract: $(ExtractedBootloaders) ## Extract bootloaders from the official ISO
 
 evaluate: $(KickstartScripts) ## Evaluate kickstart scripts templates with the current values.
 
@@ -338,11 +334,8 @@ $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 $(MachineOwnerPEM): $(MachineOwnerDER) | $$(@D) check/openssl
 	$(OPENSSL) x509 -in $< -inform DER -outform PEM -out $@
 
-$(ExtractedShim) $(ExtractedGrub) $(ExtractedMokManager) &: $(OfficialIso) | $$(@D) check/xorriso
-	$(XORRISO) -osirrox on -indev $< \
-		-extract /EFI/BOOT/BOOT$(ARCHEFI).EFI $(ExtractedShim) \
-		-extract /EFI/BOOT/grub$(ArchEFI).efi $(ExtractedGrub) \
-		-extract /EFI/BOOT/mm$(ArchEFI).efi   $(ExtractedMokManager)
+$(ExtractedBootloaders): $(OfficialIso) | $$(@D) check/xorriso
+	$(XORRISO) -osirrox on -indev $< -extract /EFI/BOOT/$(@F) $@
 
 $(KickstartScripts): $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
 	$(ENVSUBST) '$(ExportedVariables:%=$$%)' < $< | sed 's|^%shard \(.*\)$$|%ksappend /run/install/repo/kickstart/\1.cfg|' > $@

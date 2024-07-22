@@ -64,7 +64,7 @@ CountryCode=US
 City=New_York
 
 # Used during installation and on the target system
-KeyboardLayouts="us,'cz (qwery)'"
+KeyboardLayouts="us,'cz (qwerty)'"
 Languages=en_US
 # Languages="--addsupport=en_GB en_US.utf8"
 NtpPool=3.fedora.pool.ntp.org
