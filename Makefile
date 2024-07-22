@@ -129,7 +129,7 @@ else
 	FedoraMethod    := netinst
 endif
 
-FedoraMajor         := $(shell cut --delimiter '-' --field 1 <<< "$(FedoraVersion)")
+FedoraMajor         := $(shell cut -d- -f1 <<< "$(FedoraVersion)")
 IsoLabel            := Fedora_$(FedoraVersion)_$(Architecture)
 FatLabel            := BOOT_EFI
 MakeFatOptions      := -C -n $(FatLabel)
