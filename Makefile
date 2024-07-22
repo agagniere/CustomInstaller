@@ -75,6 +75,9 @@ GPG_VERIFY          := gpgv
 OPENSSL             := openssl
 XORRISO             := xorriso -no_rc
 ENVSUBST            := envsubst
+MAKE_FAT            := mkfs.fat
+MKDIR_FAT           := mmd
+CP_FAT              := mcopy
 
 # Folders
 GeneratedFolder     := generated
@@ -129,6 +132,7 @@ endif
 FedoraMajor         := $(shell cut --delimiter '-' --field 1 <<< "$(FedoraVersion)")
 IsoLabel            := Fedora_$(FedoraVersion)_$(Architecture)
 FatLabel            := BOOT_EFI
+MakeFatOptions      := -C -n $(FatLabel)
 
 # URLs
 FedoraKeyURL        := https://fedoraproject.org
@@ -153,6 +157,9 @@ ExtractedBootloaders:= $(addprefix $(ExtractedFolder)/,BOOT$(ARCHEFI).EFI grub$(
 KickstartScripts    := $(KickstartTemplates:kickstart/%=$(KickstartFolder)/%)
 GrubConfig          := $(GrubFolder)/grub.cfg
 IsoImage            := $(GeneratedFolder)/$(IsoLabel).iso
+SignedIsoImage      := $(GeneratedFolder)/$(IsoLabel)_signed.iso
+EfiBootFiles        := $(ExtractedBootloaders) $(GrubConfig)
+EfiBoot             := $(GeneratedFolder)/efiboot.img
 # ---------------------------------------
 
 # ---------- Make Configuration ----------
@@ -245,6 +252,11 @@ check/xorriso: ## Check that xorriso is installed. It is needed to extract from 
 check/envsubst: ## Check that envsubst is installed. It is used to evaluate templates using the environment
 	@$(call check_command,ENVSUBST)
 
+check/fat: ## Check that FAT manipulation tools are installed
+	@$(call check_command,MAKE_FAT)
+	@$(call check_command,MKDIR_FAT)
+	@$(call check_command,CP_FAT)
+
 check/all: check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso check/envsubst ## Check that all requirements are installed
 
 .PHONY: check/all check/downloader check/gpg_verifier check/shasum check/openssl check/xorriso check/envsubst
@@ -261,7 +273,9 @@ evaluate: $(KickstartScripts) ## Evaluate kickstart scripts templates with the c
 
 grub/config: $(GrubConfig) ## Generate GRUB configuration: Create an entry for each kickstart script starting with 'entry_'.
 
-.PHONY: download certificates extract evaluate grub/config
+boot/image: $(EfiBoot) ## Generate an image used to boot in EFI mode
+
+.PHONY: download certificates extract evaluate grub/config boot/image
 
 ##@ ISO Generation
 
@@ -336,6 +350,7 @@ $(MachineOwnerPEM): $(MachineOwnerDER) | $$(@D) check/openssl
 
 $(ExtractedBootloaders): $(OfficialIso) | $$(@D) check/xorriso
 	$(XORRISO) -osirrox on -indev $< -extract /EFI/BOOT/$(@F) $@
+	@touch $@
 
 $(KickstartScripts): $(KickstartFolder)/%.cfg: kickstart/%.cfg | $$(@D) check/envsubst
 	$(ENVSUBST) '$(ExportedVariables:%=$$%)' < $< | sed 's|^%shard \(.*\)$$|%ksappend /run/install/repo/kickstart/\1.cfg|' > $@
@@ -353,7 +368,14 @@ $(GrubFolder)/entries.cfg: $(filter kickstart/entry_%,$(KickstartTemplates)) | $
 $(GrubConfig): grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D)
 	cat $^ > $@
 
-$(IsoImage): $(OfficialIso) $(GrubConfig) $(KickstartScripts) | $$(@D) check/xorriso
+$(EfiBoot): $(ExtractedBootloaders) $(GrubConfig) | $$(@D) check/fat
+	bytes=$$(du --bytes --total --summarize $^ | tail -1 | cut -f1) && \
+	kilos=$$(echo "((($$bytes + 1023) / 1024 + 8192 + 1023) / 1024) * 1024" | bc) && \
+	$(MAKE_FAT) $(MakeFatOptions) `(( $$kilos >= 36864 )) && echo -F 32` $@ $$kilos
+	$(MKDIR_FAT) -i $@ "::/EFI" "::/EFI/BOOT"
+	$(CP_FAT) -i $@ $^ "::/EFI/BOOT"
+
+$(IsoImage): $(OfficialIso) $(GrubConfig) $(EfiBoot) $(KickstartScripts) | $$(@D) check/xorriso
 	$(RM) $@
 	$(XORRISO) \
 		-indev $< \
@@ -361,11 +383,16 @@ $(IsoImage): $(OfficialIso) $(GrubConfig) $(KickstartScripts) | $$(@D) check/xor
 		-map $(GrubConfig)      EFI/BOOT/grub.cfg \
 		-map $(KickstartFolder) kickstart \
 		-chmod_r a+r,a-w / -- \
-		-boot_image any replay \
 		-as mkisofs \
 		-iso-level 3 -full-iso9660-filenames \
 		-joliet -joliet-long -rational-rock \
-		-volid "$(IsoLabel)" --preparer "$(FullName)"
+		-volid "$(IsoLabel)" --preparer "$(FullName)" \
+		-partition_offset 16 \
+		-append_partition 2 'C12A7328-F81F-11D2-BA4B-00A0C93EC93B' $(EfiBoot) \
+		-appended_part_as_gpt \
+		-eltorito-alt-boot \
+		-e '--interval:appended_partition_2:all::' \
+		-no-emul-boot
 
 # Put at the end because it is not well parsed by editors providing syntax color
 quote := '
