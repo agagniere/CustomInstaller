@@ -369,6 +369,7 @@ $(GrubConfig): grub/prefix.cfg $(GrubFolder)/entries.cfg grub/suffix.cfg | $$(@D
 	cat $^ > $@
 
 $(EfiBoot): $(ExtractedBootloaders) $(GrubConfig) | $$(@D) check/fat
+	$(RM) $@
 	bytes=$$(du --bytes --total --summarize $^ | tail -1 | cut -f1) && \
 	kilos=$$(echo "((($$bytes + 1023) / 1024 + 8192 + 1023) / 1024) * 1024" | bc) && \
 	$(MAKE_FAT) $(MakeFatOptions) `(( $$kilos >= 36864 )) && echo -F 32` $@ $$kilos
