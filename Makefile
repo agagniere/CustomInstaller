@@ -46,9 +46,9 @@ FedoraEdition       ?= Workstation
 Architecture        ?= x86_64
 
 FullName            ?= Your NAME
-UserName            ?= yname
+UserName            ?= admin
 ifeq "$(origin Password)" 'undefined'
-	Password        := $(shell openssl passwd -6 -salt sugar pepper)
+	Password        := $(shell openssl passwd -6 -salt sugar admin)
 endif
 ifeq "$(origin RootPassword)" 'undefined'
 	RootPassword    := $(Password)
