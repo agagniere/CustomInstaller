@@ -348,6 +348,7 @@ $(MachineOwnerKey) $(MachineOwnerDER) &: | $$(@D) check/openssl
 $(MachineOwnerPEM): $(MachineOwnerDER) | $$(@D) check/openssl
 	$(OPENSSL) x509 -in $< -inform DER -outform PEM -out $@
 
+# Could be done with a single xorriso invocation but it seems MacOS' Make doesn't handle the &: syntax ?
 $(ExtractedBootloaders): $(OfficialIso) | $$(@D) check/xorriso
 	$(XORRISO) -osirrox on -indev $< -extract /EFI/BOOT/$(@F) $@
 	@touch $@
