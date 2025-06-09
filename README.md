@@ -40,9 +40,9 @@ For conveniance, you can place all values you want to customize in a local file 
 
 ```bash
 # Latest Fedora release
-FedoraVersion=40-1.14
+FedoraVersion=42-1.1
 
-# Workstation | Server
+# Workstation | KDE | Server
 FedoraEdition=Workstation
 
 # x86_64 | aarch64 | ppc64le | s390x
@@ -113,12 +113,52 @@ If you want this entry to be the default in GRUB, add `DefaultEntry=myinstaller`
 
 ## Usage
 
-```shell
-make help
+```console
+$ make help
 
-# Test for missing dependencies
-make check/all
+This Makefile allows one to generate a custom ISO to install Fedora
+
+Usage:
+  make <target>
+
+General:
+  default               When no target is specified, display the help and summary
+  summary               Sum up what the makefile will do, given the current configuration
+  help                  Display this help
+  raw_help              Display the help without color
+
+Check for requirements:
+  check/downloader      Check that the choosen downloader is installed
+  check/gpg_verifier    Check that the GPG verifier is installed
+  check/shasum          Check that the sum checker is installed. It is used to verify files integrity
+  check/openssl         Check that openssl is installed. It is used to generate certificates
+  check/xorriso         Check that xorriso is installed. It is needed to extract from and modify ISOs
+  check/envsubst        Check that envsubst is installed. It is used to evaluate templates using the environment
+  check/fat             Check that FAT manipulation tools are installed
+  check/all             Check that all requirements are installed
+
+Individual steps:
+  download              Download the official ISO (and check its integrity)
+  certificates          Generate a private public key pair used to sign the bootloader
+  extract               Extract bootloaders from the official ISO
+  evaluate              Evaluate kickstart scripts templates with the current values.
+  grub/config           Generate GRUB configuration: Create an entry for each kickstart script starting with 'entry_'.
+  boot/image            Generate an image used to boot in EFI mode
+
+ISO Generation:
+  iso                   Generate a bootable ISO image
+
+Removing generated files:
+  clean/downloads       Remove downloaded files
+  clean/certificates    Remove certificates
+  clean/extracted       Remove files extracted from the official ISO
+  clean/evaluated       Remove generated kickstart scripts
+  clean/iso             Only remove generated ISO images
+  clean                 Clean all generated and extracted files
+  clean/all             Remove all generated, extracted and downloaded files
 ```
+
+## Sample summary
 
 ```console
 $ make summary
