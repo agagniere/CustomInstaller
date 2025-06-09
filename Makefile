@@ -19,12 +19,12 @@
 ##
 
 ##
- # |         |  Workstation  |     Server    |
- # | ------- | ------------- | ------------- |
- # | x86_64  |  To be tested | To be tested  |
- # | aarch64 |       X       | To be tested  |
- # | ppc64le | Download only | Download only |
- # |  s390x  |       X       | Download only |
+ # |         |  Workstation  |     Server    | KDE |
+ # | ------- | ------------- | ------------- | --- |
+ # | x86_64  |  To be tested |     Tested    | TBT |
+ # | aarch64 |  To be tested | To be tested  | TBT |
+ # | ppc64le | Download only | Download only | TBT |
+ # |  s390x  |       X       | Download only |  X  |
  #
  # TL;DR: x86_64  -> Workstation
  #        aarch64 -> Server
@@ -37,9 +37,9 @@ ifeq "$(origin Downloader)" 'undefined'
 	Downloader      := $(shell command -v wget > /dev/null && echo wget || echo curl)
 endif
 
-FedoraVersion       ?= 40-1.14
+FedoraVersion       ?= 42-1.1
 
-# Workstation | Server
+# Workstation | KDE | Server
 FedoraEdition       ?= Workstation
 
 # x86_64 | aarch64 | ppc64le | s390x
@@ -122,11 +122,18 @@ else
 endif
 
 # Edition specific
-ifeq "$(FedoraEdition)" 'Workstation'
-	FedoraMethod    := Live
-else
+ifeq "$(FedoraEdition)" 'Server'
 # dvd | netinst
 	FedoraMethod    := netinst
+	IsoSuffix       := $(Architecture)-$(FedoraVersion)
+else # Workstation & KDE
+	FedoraMethod    := Live
+	IsoSuffix       := $(FedoraVersion).$(Architecture)
+endif
+ifeq "$(FedoraEdition)" 'KDE'
+	FedoraEditionName := $(FedoraEdition)-Desktop
+else # Workstation & Server
+	FedoraEditionName := $(FedoraEdition)
 endif
 
 FedoraMajor         := $(shell cut -d- -f1 <<< "$(FedoraVersion)")
@@ -140,7 +147,7 @@ OfficialIsoURL      := https://download.fedoraproject.org/pub/$(FedoraChannel)/r
 
 # File names
 FedoraKeyName       := fedora.gpg
-OfficialIsoName     := Fedora-$(FedoraEdition)-$(FedoraMethod)-$(Architecture)-$(FedoraVersion).iso
+OfficialIsoName     := Fedora-$(FedoraEditionName)-$(FedoraMethod)-$(IsoSuffix).iso
 OfficialCheckName   := Fedora-$(FedoraEdition)-$(FedoraVersion)-$(Architecture)-CHECKSUM
 
 # Input Files

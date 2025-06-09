@@ -16,7 +16,7 @@ If you just want to download Fedora official ISOs, this makefile can be of use:
 make download
 
 # You can choose the edition and architecture:
-FedoraEdition=Server Architecture=aarch64 make download
+FedoraEdition=KDE Architecture=aarch64 make download
 
 # You can even choose the installation method for the server edition:
 FedoraEdition=Server Architecture=ppc64le make download FedoraMethod=dvd
@@ -25,14 +25,14 @@ FedoraEdition=Server Architecture=ppc64le make download FedoraMethod=dvd
 Downloader=curl make download
 ```
 
-Downloadable status as of Fedora 40 :
+Downloadable status as of Fedora 42 :
 
-|           | Workstation | Server |
-|:----------|:-----------:|:------:|
-| `x86_64`  | ✅          | ✅     |
-| `aarch64` | ❌          | ✅     |
-| `ppc64le` | ✅          | ✅     |
-| `s390x`   | ❌          | ✅     |
+|           | Workstation | KDE | Server |
+|:----------|:-----------:|:---:|:------:|
+| `x86_64`  | ✅          | ✅  | ✅     |
+| `aarch64` | ✅          | ✅  | ✅     |
+| `ppc64le` | ✅          | ✅  | ✅     |
+| `s390x`   | ❌          | ❌  | ✅     |
 
 ## Generating an ISO
 
@@ -110,3 +110,80 @@ partition /home --fstype=ext4 --ondisk=sdb --noformat --usepart=LABEL=MY_HOME
 ```
 
 If you want this entry to be the default in GRUB, add `DefaultEntry=myinstaller` to `values.sh`.
+
+## Usage
+
+```shell
+make help
+
+# Test for missing dependencies
+make check/all
+```
+
+```console
+$ make summary
+
+Ready to generate a bootable ISO for Fedora 42 (42-1.1)
+
+When ready:
+  make <step>
+
+download
+  will download:
+  - fedora.gpg
+  - Fedora-Workstation-42-1.1-x86_64-CHECKSUM
+  - Fedora-Workstation-Live-42-1.1.x86_64.iso
+  to     /Users/toto/Downloads/
+  using  curl
+
+certificates
+  will generate certificates for Machine Owner Key verification
+  to     generated/certificates
+  using  openssl
+
+extract
+  will extract from the official ISO:
+  - BOOTX64.EFI
+  - grubx64.efi
+  - mmx64.efi
+  to     extracted
+  using  xorriso
+
+evaluate
+  will fill the values:
+  - FullName            : Your NAME
+  - UserName            : admin
+  - Password            : [...]
+  - RootPassword        : [...]
+  - TimeZone            : America/New_York
+  - Languages           : en_US.utf8
+  - KeyboardLayouts     : us
+  - NtpPool             : 2.fedora.pool.ntp.org
+  in :
+  - kickstart/common.cfg
+  - kickstart/development.cfg
+  - kickstart/entr.cfg
+  - kickstart/entry_desktop.cfg
+  - kickstart/entry_devmachine.cfg
+  - kickstart/entry_minimal.cfg
+  - kickstart/entry_runner.cfg
+  - kickstart/entry_yocto.cfg
+  - kickstart/prompt_hostname.cfg
+  - kickstart/pyenv.cfg
+  - kickstart/runner.cfg
+  - kickstart/security.cfg
+  - kickstart/yocto.cfg
+  to     generated/kickstart
+  using  envsubst
+
+grub/config
+  will generate a grub configuration with the following entries:
+  - desktop        : Install a graphical environment with developm
+  - devmachine     : Headless development machine
+  - minimal        : Manual package selection and partitioning
+  - runner         : YOCTO Gitlab runner
+  - yocto          : Headless machine for YOCTO development
+
+help
+  to learn how to use this makefile
+```
